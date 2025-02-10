@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resume Generator</title>
+    <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64," />
+    <link rel="apple-touch-icon" href="data:image/x-icon;base64," />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+      .loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+      }
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid #f3f3f3;
+        border-top: 5px solid #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .preview-container {
+        height: 800px;
+        overflow-y: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.5rem;
+        margin-top: 1rem;
+        background: white;
+      }
+      .preview-frame {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 min-h-screen p-8">
+    <!-- Loading indicator -->
+    <div id="loadingIndicator" class="loading hidden">
+      <div class="loading-spinner"></div>
+    </div>
+
+    <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6">
+      <h1 class="text-3xl font-bold mb-6 text-center">Resume Generator</h1>
+
+      <div class="mb-6">
+        <h2 class="text-xl font-semibold mb-2">Instructions</h2>
+        <p class="text-gray-700 mb-4">
+          Fill in your resume information in the text area below using JSON
+          format. Click "Generate Resume" to create your resume in both DOCX and
+          PDF formats.
+        </p>
+      </div>
+
+      <div class="mb-6">
+        <textarea
+          id="resumeData"
+          rows="20"
+          class="w-full p-4 border rounded-lg font-mono text-sm"
+          placeholder="Paste your resume JSON here..."
+        ></textarea>
+      </div>
+
+      <div class="flex justify-center gap-4 mb-6">
+        <button
+          id="generateBtn"
+          class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
+        >
+          Generate Resume
+        </button>
+        <button
+          id="loadSampleBtn"
+          class="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Load Sample Data
+        </button>
+      </div>
+
+      <div id="downloadLinks" class="hidden text-center">
+        <p class="text-green-600 mb-4">Resume generated successfully!</p>
+        <div class="flex justify-center gap-4">
+          <a
+            href="/download/docx"
+            class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
+          >
+            Download DOCX
+          </a>
+          <a
+            href="/download/pdf"
+            class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
+          >
+            Download PDF
+          </a>
+        </div>
+      </div>
+
+      <div id="previewContainer" class="hidden mt-8">
+        <div class="flex space-x-4 mb-4">
+          <button
+            id="previewDOCX"
+            class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
+          >
+            Preview DOCX
+          </button>
+          <button
+            id="previewPDF"
+            class="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600"
+          >
+            Preview PDF
+          </button>
+        </div>
+        <div id="docxPreview" class="preview-container hidden">
+          <div id="docxContent" class="p-8"></div>
+        </div>
+        <div id="pdfPreview" class="preview-container hidden">
+          <canvas id="pdfCanvas"></canvas>
+        </div>
+      </div>
+
+      <div id="error" class="hidden text-red-600 text-center mt-4"></div>
+    </div>
+
+    <script>
+      // Add debug logging
+      console.log("Script loaded");
+
+      const sampleData = {
+        name: "Jane Doe",
+        contact: {
+          phone: "(555) 123-4567",
+          email: "jane.doe@example.com",
+          linkedin: "linkedin.com/in/janedoe",
+          location: "Anytown, USA",
+        },
+        summary:
+          "A highly adaptable data scientist with a passion for solving complex problems...",
+        skills: [
+          "Python",
+          "R",
+          "Machine Learning",
+          "Data Visualization",
+          "SQL",
+        ],
+        experience: [
+          {
+            title: "Data Scientist",
+            company: "DataCorp",
+            dates: "2022 - Present",
+            responsibilities: [
+              "Developed machine learning models for customer segmentation",
+              "Presented findings to stakeholders and implemented recommendations",
+            ],
+          },
+        ],
+        education: [
+          {
+            institution: "University of Tech",
+            degree: "M.S. in Data Science",
+            dates: "2020 - 2022",
+            gpa: "3.9",
+          },
+        ],
+      };
+
+      function loadSampleData() {
+        console.log("loadSampleData called");
+        try {
+          const textarea = document.getElementById("resumeData");
+          if (!textarea) {
+            console.error("Could not find textarea element");
+            return;
+          }
+          const formattedData = JSON.stringify(sampleData, null, 2);
+          textarea.value = formattedData;
+          console.log("Sample data loaded successfully");
+        } catch (error) {
+          console.error("Error loading sample data:", error);
+        }
+      }
+
+      // Add event listeners when DOM is loaded
+      async function loadPDFPreview() {
+        console.log('Loading PDF preview');
+        try {
+            const pdfUrl = `/preview/pdf?t=${Date.now()}`;
+            const loadingTask = pdfjsLib.getDocument(pdfUrl);
+            const pdf = await loadingTask.promise;
+            const canvas = document.getElementById('pdfCanvas');
+            const context = canvas.getContext('2d');
+
+            // Get the first page
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 1.5 });
+
+            // Set canvas dimensions to match the page
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+
+            // Render PDF page into canvas context
+            const renderContext = {
+                canvasContext: context,
+                viewport: viewport
+            };
+            await page.render(renderContext);
+
+            document.getElementById('pdfPreview').classList.remove('hidden');
+            document.getElementById('docxPreview').classList.add('hidden');
+        } catch (error) {
+            console.error('Error loading PDF:', error);
+            showError('Failed to load PDF preview');
+        }
+        try {
+          const loadingTask = pdfjsLib.getDocument("/preview/pdf");
+          const pdf = await loadingTask.promise;
+          const page = await pdf.getPage(1);
+
+          const canvas = document.getElementById("pdfCanvas");
+          const context = canvas.getContext("2d");
+
+          const viewport = page.getViewport({ scale: 1.5 });
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+          }).promise;
+
+          document.getElementById("pdfPreview").classList.remove("hidden");
+          document.getElementById("docxPreview").classList.add("hidden");
+        } catch (error) {
+          console.error("Error loading PDF:", error);
+          showError("Failed to load PDF preview");
+        }
+      }
+
+      async function loadDOCXPreview() {
+        console.log('Loading DOCX preview');
+        try {
+            const response = await fetch(`/preview/docx?t=${Date.now()}`);
+            const arrayBuffer = await response.arrayBuffer();
+            const result = await mammoth.convertToHtml({ arrayBuffer });
+            
+            document.getElementById('docxContent').innerHTML = result.value;
+            document.getElementById('docxPreview').classList.remove('hidden');
+            document.getElementById('pdfPreview').classList.add('hidden');
+        } catch (error) {
+            console.error('Error loading DOCX:', error);
+            showError('Failed to load DOCX preview');
+        }
+        try {
+          const response = await fetch("/preview/docx");
+          const blob = await response.blob();
+
+          const result = await mammoth.convertToHtml({
+            arrayBuffer: await blob.arrayBuffer(),
+          });
+          document.getElementById("docxContent").innerHTML = result.value;
+
+          document.getElementById("docxPreview").classList.remove("hidden");
+          document.getElementById("pdfPreview").classList.add("hidden");
+        } catch (error) {
+          console.error("Error loading DOCX:", error);
+          showError("Failed to load DOCX preview");
+        }
+      }
+
+      function showError(message) {
+        const errorDiv = document.getElementById("error");
+        errorDiv.textContent = message;
+        errorDiv.classList.remove("hidden");
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        console.log("Setting up event listeners");
+
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        const generateBtn = document.getElementById("generateBtn");
+        const previewPDFBtn = document.getElementById("previewPDF");
+        const previewDOCXBtn = document.getElementById("previewDOCX");
+
+        previewPDFBtn.addEventListener("click", loadPDFPreview);
+        previewDOCXBtn.addEventListener("click", loadDOCXPreview);
+        const loadSampleBtn = document.getElementById("loadSampleBtn");
+
+        if (generateBtn) {
+          generateBtn.addEventListener("click", generateResume);
+          console.log("Generate button listener added");
+        }
+
+        if (loadSampleBtn) {
+          loadSampleBtn.addEventListener("click", loadSampleData);
+          console.log("Load sample button listener added");
+        }
+
+        if (previewDOCXBtn) {
+          previewDOCXBtn.addEventListener("click", loadDOCXPreview);
+        }
+
+        if (previewPDFBtn) {
+          previewPDFBtn.addEventListener("click", loadPDFPreview);
+        }
+      });
+
+      async function generateResume() {
+        // Hide previous messages and show loading
+        document.getElementById("downloadLinks").classList.add("hidden");
+        document.getElementById("error").classList.add("hidden");
+        document.getElementById("loadingIndicator").classList.remove("hidden");
+
+        try {
+          // Get and parse the JSON data
+          const resumeData = JSON.parse(
+            document.getElementById("resumeData").value
+          );
+
+          // Send the data to the server
+          const response = await fetch("/generate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(resumeData),
+          });
+
+          const result = await response.json();
+
+          if (response.ok) {
+            // Show download links and preview container
+            document.getElementById("downloadLinks").classList.remove("hidden");
+            document.getElementById("previewContainer").classList.remove("hidden");
+          } else {
+            throw new Error(result.message || "Failed to generate resume");
+          }
+        } catch (error) {
+          // Show error message
+          const errorDiv = document.getElementById("error");
+          errorDiv.textContent = error.message;
+          errorDiv.classList.remove("hidden");
+        } finally {
+          // Hide loading indicator
+          document.getElementById("loadingIndicator").classList.add("hidden");
+        }
+      }
+    </script>
+  </body>
+</html>
